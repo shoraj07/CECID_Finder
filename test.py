@@ -1,9 +1,22 @@
 import pandas as pd
-from tabulate import tabulate
 import numpy as np
-'''reading data from input file.'''
-df1 = pd.read_excel(r'Input\case_soc-shoraj-12-15-22.xlsx')
-df2 = pd.read_excel(r'Input\involved_party-shoraj-12-16-22.xlsx')
+
+'''reading data from input file.
+
+   Please add the files in the same order.'''
+df1 = pd.read_excel(r'Input\D1.xlsx')
+df2 = pd.read_excel(r'Input\D2.xlsx')
+
+df2.User_Id__c.fillna(0, inplace=True)  # Replacing the blank spaces in "User ID" column with 0.
+df1.Id.fillna(0, inplace=True)  # Replacing the blank spaces in "User ID" column with 0.
+df2.replace(0, np.nan, inplace=True)  # Replacing '0' with 'NaN'.
+df1.replace(0, np.nan, inplace=True)  # Replacing '0' with 'NaN'.
+df2.dropna(subset=['User_Id__c'],
+           inplace=True)  # Droping 'NaN' cells from "User ID"(removing empty cells from User ID).
+df1.dropna(subset=['Id'], inplace=True)  # Droping 'NaN' cells from "User ID"(removing empty cells from User ID).
+
+df2.dropna(subset=['First_Name__c'],
+           inplace=True)
 
 ''' empName- contains value from "Subject_of_Case__c"
     firstName- contains first name after splitting
@@ -11,36 +24,63 @@ df2 = pd.read_excel(r'Input\involved_party-shoraj-12-16-22.xlsx')
 empName = df1.Subject_of_Case__c.values.tolist()
 firstName = []
 lastName = []
+matches = []
 
 '''split the names in empName to firstName and lastName'''
 for name in empName:
     if str(name).__contains__(','):
         lastName.append(name.split(', ', 1)[0])
         firstName.append(name.split(', ', 1)[1])
-    else:
+    elif str(name).__contains__(' '):
         firstName.append(name.split(' ', 1)[0])
         lastName.append(name.split(' ', 1)[1])
 
-# temp1 = df1
-# temp1['First Name'] = firstName
-# temp1['Last Name'] = lastName
-# temp1['Full Name'] = temp1['First Name'] + temp1['Last Name']
+
+
+'''Adding data from lists(firstName, lastName) in df1
+   df1['Full Name']- creating a primary key to compare names in both the sheets.'''
 df1['First Name'] = firstName
 df1['Last Name'] = lastName
-df1['Full Name'] = df1['First Name'] + df1['Last Name']
+df1['First Name'] = df1['First Name'].str.lower()
+df1['Last Name'] = df1['Last Name'].str.lower()
+df2['First_Name__c'] = df2['First_Name__c'].str.lower()
+df2['Last_Name__c'] = df2['Last_Name__c'].str.lower()
 
-# temp2 = df2
-# temp2['Full Name'] = temp2['First_Name__c'] + temp2['Last_Name__c']
-# temp2 = temp2[['Full Name', 'User_Id__c']]
-# temp2 = temp2.drop_duplicates()
-df2['Full Name'] = df2['First_Name__c'] + df2['Last_Name__c']
-df2 = df2[['Full Name', 'User_Id__c']]
-df2 = df2.drop_duplicates()
 
-temp3 = pd.merge(df1, df2, on=['Full Name'], how='inner')
-temp3.drop_duplicates(inplace=True, ignore_index=True)
-temp3.drop(['First Name', 'Last Name', 'Full Name'], axis=1, inplace=True)
 
-df1.to_excel('Output/temp1.xlsx', index=False)
-df2.to_excel('Output/temp2.xlsx', index=False)
-temp3.to_excel('Output/temp3.xlsx', index=False)
+# Iterate through each row in df1
+for index, row in df1.iterrows():
+    if row['First Name'].__contains__('?') or row['Last Name'].__contains__('?'):
+        # row['First Name'].split(', ', 1)[0]
+        row['First Name'] = row['First Name'].split('?', 1)[0]
+        row['Last Name'] = row['Last Name'].split('?', 1)[0]
+        # print('containing ? in the first value--------------------------',row['First Name'])
+        # print('containing ? in the last value--------------------------',row['Last Name'])
+    # Check if column3 of df1 is equal to column3 of df2
+    if row['Id'] in df2['Case_Number__c'].values:
+        # Get the matching rows from df2
+        matches = df2[df2['Case_Number__c'] == row['Id']]
+        # Iterate through the matching rows
+        try:
+            for i, match in matches.iterrows():
+                # Check if column1 of table1 is a substring of another column1 in table2
+                if row['First Name'] in match['First_Name__c'] or row['First Name'].__contains__(match['First_Name__c'])\
+                        or match['First_Name__c'].__contains__(row['First Name']):
+                    # Check if column2 of table1 is a substring of another column2 in table2
+                    if row['Last Name'] in match['Last_Name__c'] or row['Last Name'].__contains__(match['Last_Name__c']) \
+                        or match['Last_Name__c'].__contains__(row['Last Name']):
+                        # Copy column4 values from table2 to column4 in table1
+                        df1.at[index, 'User_Id__c'] = match['User_Id__c']
+        except:
+            print(row,'\n\n',match)
+final_values = df1.__deepcopy__()
+final_values.User_Id__c.fillna(0, inplace=True)  # Replacing the blank spaces in "User ID" column with 0.
+final_values.Id.fillna(0, inplace=True)  # Replacing the blank spaces in "User ID" column with 0.
+final_values.replace(0, np.nan, inplace=True)  # Replacing '0' with 'NaN'.
+final_values.replace(0, np.nan, inplace=True)  # Replacing '0' with 'NaN'.
+final_values.dropna(subset=['User_Id__c'],
+           inplace=True)  # Droping 'NaN' cells from "User ID"(removing empty cells from User ID).
+
+final_values.to_excel('Output/CECID_Mapping_Output.xlsx-02-16-23', index=False)
+df1.to_excel('Output/case_soc1.xlsx', index=False)  # case_soc
+df2.to_excel('Output/involved_party2.xlsx', index=False)  # involved_party
